@@ -1,6 +1,7 @@
 package server;
 
-import common.CryptoUtil; // <-- Add this line
+import common.CryptoUtil;
+import common.DBUtil;
 import java.awt.*;
 import java.io.*;
 import java.net.*;
@@ -68,11 +69,10 @@ public class ServerApp extends JFrame {
         }).start();
     }
 
-    private void handleClient(Socket socket) {
+private void handleClient(Socket socket) {
     try (DataInputStream in = new DataInputStream(socket.getInputStream());
          DataOutputStream out = new DataOutputStream(socket.getOutputStream())) {
 
-        // Read requested file name from client
         String requestedFile = in.readUTF();
 
         if (selectedFile == null || !selectedFile.exists() || 
@@ -91,6 +91,10 @@ public class ServerApp extends JFrame {
 
         log("File sent: " + selectedFile.getName());
 
+        // JDBC logging
+        DBUtil.logDownload(socket.getInetAddress().getHostAddress(), selectedFile.getName());
+        //DBUtil.logDownload(socket.getInetAddress().getHostAddress(), selectedFile.getName());
+
         scheduler.schedule(() -> {
             if (selectedFile.delete()) {
                 log("File deleted after timeout: " + selectedFile.getName());
@@ -101,6 +105,7 @@ public class ServerApp extends JFrame {
         log("Client error: " + e.getMessage());
     }
 }
+
 
     private void log(String msg) {
         SwingUtilities.invokeLater(() -> logArea.append(msg + "\n"));
