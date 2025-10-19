@@ -1,0 +1,5 @@
+# Build output
+/out/
+
+# Don't commit runtime config with secrets
+config.properties

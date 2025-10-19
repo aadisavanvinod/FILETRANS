@@ -1,0 +1,8 @@
+# Copy this file to config.properties (DO NOT commit your real config.properties)
+# Example DB configuration
+port=5000
+password=SuperSecret123
+dbLogging=true
+dbUrl=jdbc:mysql://localhost:3306/file_server
+dbUser=root
+dbPass=yourpassword
