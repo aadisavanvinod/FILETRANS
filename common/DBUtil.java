@@ -30,9 +30,25 @@ public class DBUtil {
             }
         }
 
-        if (url == null) url = "jdbc:mysql://localhost:3306/file_server";
+    if (url == null) url = "jdbc:mysql://localhost:3306/file_server";
         if (user == null) user = "";
         if (pass == null) pass = "";
+
+        // Ensure common JDBC params are present to avoid connection issues (e.g. Public Key Retrieval)
+        try {
+            String lower = url.toLowerCase();
+            if (lower.startsWith("jdbc:mysql:") && !url.contains("?")) {
+                // no query params — add defaults
+                url = url + "?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC";
+            } else if (lower.startsWith("jdbc:mysql:") && url.contains("?") && !url.contains("allowPublicKeyRetrieval=")) {
+                // has some params but missing allowPublicKeyRetrieval — append
+                url = url + "&allowPublicKeyRetrieval=true";
+                if (!url.contains("useSSL=")) url = url + "&useSSL=false";
+                if (!url.contains("serverTimezone=")) url = url + "&serverTimezone=UTC";
+            }
+        } catch (Exception e) {
+            // ignore — fall back to whatever the user provided
+        }
 
         return new String[]{url, user, pass};
     }

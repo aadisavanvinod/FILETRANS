@@ -5,4 +5,4 @@ password=SuperSecret123
 dbLogging=true
 dbUrl=jdbc:mysql://localhost:3306/file_server
 dbUser=root
-dbPass=yourpassword
+dbPass=12345678

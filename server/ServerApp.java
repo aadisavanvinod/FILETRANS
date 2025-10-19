@@ -214,15 +214,19 @@ public class ServerApp extends JFrame {
             try {
                 serverSocket = new ServerSocket(config.port);
             log("Server started on port " + config.port);
+            // Also print to stdout so terminal/startup scripts can detect server status
+            System.out.println("Server started on port " + config.port);
             SwingUtilities.invokeLater(() -> statusLabel.setText("Listening on port " + config.port));
 
                 while (true) {
                     Socket socket = serverSocket.accept();
                     log("Client connected: " + socket.getInetAddress());
+                    System.out.println("Client connected: " + socket.getInetAddress());
                     executor.execute(() -> handleClient(socket));
                 }
             } catch (IOException ex) {
                 log("Server error: " + ex.getMessage());
+                ex.printStackTrace(System.err);
                 SwingUtilities.invokeLater(() -> statusLabel.setText("Error"));
             }
         }).start();
@@ -273,6 +277,7 @@ public class ServerApp extends JFrame {
             }
 
             log("File sent: " + selectedFile.getName());
+            System.out.println("File sent: " + selectedFile.getName() + " to " + socket.getInetAddress());
             SwingUtilities.invokeLater(() -> progressBar.setString("Idle"));
 
             // JDBC logging (only if enabled in config)
