@@ -7,19 +7,17 @@ import java.awt.*;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.net.Socket;
-import java.nio.file.Files;
+
 
 public class ClientApp extends JFrame {
-    private JTextField serverIpField, fileField;
+    private JTextField serverIpField, fileField, portField;
+    private JPasswordField passwordField;
     private JTextArea logArea;
     private JButton downloadBtn;
     private JLabel statusLabel;
     private JProgressBar progressBar;
-    private static final int PORT = 5000;
-    private static final String PASSWORD = "SuperSecret123";
+    private static final int DEFAULT_PORT = 5000;
 
     public ClientApp() {
         // Nimbus look and feel
@@ -42,11 +40,23 @@ public class ClientApp extends JFrame {
         top.add(new JLabel("Server IP:"));
         serverIpField = new JTextField("127.0.0.1");
         top.add(serverIpField);
-        top.add(new JLabel("File Name:"));
+    top.add(new JLabel("File Name:"));
         fileField = new JTextField("test.txt");
         top.add(fileField);
 
-        downloadBtn = new JButton("Download File");
+    top.add(new JLabel("Port:"));
+    portField = new JTextField(String.valueOf(DEFAULT_PORT));
+    top.add(portField);
+
+    downloadBtn = new JButton("Download File");
+    // add password field below the controls
+    JPanel pwPanel = new JPanel(new BorderLayout(6,6));
+    pwPanel.setBorder(new EmptyBorder(6,8,0,8));
+    pwPanel.add(new JLabel("Password:"), BorderLayout.WEST);
+    this.passwordField = new JPasswordField();
+    this.passwordField.setText("");
+    pwPanel.add(this.passwordField, BorderLayout.CENTER);
+    add(pwPanel, BorderLayout.BEFORE_FIRST_LINE);
         statusLabel = new JLabel("Idle");
         progressBar = new JProgressBar();
         progressBar.setStringPainted(true);
@@ -73,19 +83,23 @@ public class ClientApp extends JFrame {
 
     private void downloadFile() {
         new Thread(() -> {
-            String server = serverIpField.getText().trim();
-            String filename = fileField.getText().trim();
+                String server = serverIpField.getText().trim();
+                String filename = fileField.getText().trim();
+                int port = DEFAULT_PORT;
+                try { port = Integer.parseInt(portField.getText().trim()); } catch (Exception ex) { /* use default */ }
+                String password = new String(passwordField.getPassword());
             SwingUtilities.invokeLater(() -> {
                 statusLabel.setText("Connecting...");
                 progressBar.setValue(0);
                 logArea.append("Connecting to " + server + "...\n");
             });
 
-            try (Socket socket = new Socket(server, PORT);
+            try (Socket socket = new Socket(server, port);
                  DataOutputStream out = new DataOutputStream(socket.getOutputStream());
                  DataInputStream in = new DataInputStream(socket.getInputStream())) {
 
                 out.writeUTF(filename);
+                out.writeUTF(password);
 
                 String response = in.readUTF();
                 if (!response.equals("OK")) {
@@ -97,26 +111,23 @@ public class ClientApp extends JFrame {
                 }
 
                 String fileName = in.readUTF();
-                int length = in.readInt();
-                byte[] encrypted = new byte[length];
-                in.readFully(encrypted);
+                long length = in.readLong();
 
                 SwingUtilities.invokeLater(() -> {
-                    statusLabel.setText("Decrypting...");
-                    progressBar.setMaximum(encrypted.length);
-                    progressBar.setValue(0);
+                    statusLabel.setText("Receiving & decrypting...");
+                    progressBar.setIndeterminate(true);
                 });
 
-                byte[] decrypted = CryptoUtil.decrypt(encrypted, PASSWORD);
-
                 File outFile = new File("downloaded_" + fileName);
-                try (FileOutputStream fos = new FileOutputStream(outFile)) {
-                    fos.write(decrypted);
+                try (java.io.OutputStream fos = new java.io.FileOutputStream(outFile)) {
+                    // if length == -1, server is streaming; otherwise decrypt known-length stream
+                    CryptoUtil.decryptStream(in, fos, password, length);
                 }
 
                 SwingUtilities.invokeLater(() -> {
                     logArea.append("File received: " + outFile.getName() + "\n");
                     statusLabel.setText("Done");
+                    progressBar.setIndeterminate(false);
                     progressBar.setValue(progressBar.getMaximum());
                 });
 

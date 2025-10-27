@@ -3,7 +3,7 @@ package server;
 import common.CryptoUtil;
 import common.DBUtil;
 import java.awt.*;
-import java.io.ByteArrayInputStream;
+
 import java.io.File;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -30,6 +30,8 @@ public class ServerApp extends JFrame {
     private JLabel fileLabel;
     private JLabel statusLabel;
     private JLabel dbStatusLabel;
+    private JLabel passwordLabel;
+    private JButton copyPasswordBtn;
     private JProgressBar progressBar;
     private JLabel clientCountLabel;
     private File selectedFile;
@@ -99,13 +101,31 @@ public class ServerApp extends JFrame {
     controls.add(startBtn);
     controls.add(settingsBtn);
 
-    JPanel info = new JPanel(new GridLayout(3, 1));
+    JPanel info = new JPanel(new GridLayout(4, 1));
     info.add(fileLabel);
     info.add(statusLabel);
     info.add(dbStatusLabel);
+    passwordLabel = new JLabel("Password: " + (config != null && config.password != null ? config.password : "(none)"));
+    info.add(passwordLabel);
         topPanel.add(controls, BorderLayout.WEST);
         topPanel.add(info, BorderLayout.CENTER);
         topPanel.add(clientCountLabel, BorderLayout.EAST);
+
+        // copy password button on the far right of controls
+        copyPasswordBtn = new JButton("Copy Password");
+        styleButton(copyPasswordBtn, new Color(120,120,120), base);
+        copyPasswordBtn.setPreferredSize(new Dimension(140, 36));
+        controls.add(copyPasswordBtn);
+        copyPasswordBtn.addActionListener(ae -> {
+            try {
+                String pw = config != null ? config.password : "";
+                java.awt.Toolkit.getDefaultToolkit().getSystemClipboard()
+                    .setContents(new java.awt.datatransfer.StringSelection(pw), null);
+                log("Password copied to clipboard");
+            } catch (Exception ex) {
+                log("Failed to copy password: " + ex.getMessage());
+            }
+        });
 
         add(topPanel, BorderLayout.NORTH);
 
@@ -240,41 +260,41 @@ public class ServerApp extends JFrame {
             SwingUtilities.invokeLater(() -> clientCountLabel.setText("Active clients: " + activeClients.get()));
 
             String requestedFile = in.readUTF();
+            // read client-supplied password for authentication
+            String clientPassword = in.readUTF();
 
             if (selectedFile == null || !selectedFile.exists() || !selectedFile.getName().equals(requestedFile)) {
                 out.writeUTF("File not found");
                 return;
             }
 
-            byte[] fileBytes = Files.readAllBytes(selectedFile.toPath());
-            // show progress based on bytes sent
-            SwingUtilities.invokeLater(() -> {
-                progressBar.setMaximum(fileBytes.length);
-                progressBar.setValue(0);
-                progressBar.setString("Encrypting...");
-            });
+            // authenticate client: only proceed if password matches server config
+            if (config == null || config.password == null || !config.password.equals(clientPassword)) {
+                out.writeUTF("Auth Failed");
+                log("Client authentication failed: " + socket.getInetAddress());
+                return;
+            }
 
-            byte[] encrypted = CryptoUtil.encrypt(fileBytes, config.password);
+            SwingUtilities.invokeLater(() -> {
+                progressBar.setIndeterminate(true);
+                progressBar.setString("Encrypting & sending...");
+            });
 
             out.writeUTF("OK");
             out.writeUTF(selectedFile.getName());
-            out.writeInt(encrypted.length);
+            // send -1 length to indicate streaming (unknown encrypted length)
+            out.writeLong(-1L);
 
-            // send in chunks and update progress
-            int chunk = 8192;
-            int sent = 0;
-            ByteArrayInputStream bin = new ByteArrayInputStream(encrypted);
-            byte[] buffer = new byte[chunk];
-            int r;
-            while ((r = bin.read(buffer)) != -1) {
-                out.write(buffer, 0, r);
-                sent += r;
-                final int fSent = sent;
-                SwingUtilities.invokeLater(() -> {
-                    progressBar.setValue(fSent);
-                    progressBar.setString(String.format("Sending %d / %d bytes", fSent, encrypted.length));
-                });
+            // stream-encrypt directly from file to socket output stream
+            try (java.io.InputStream fin = Files.newInputStream(selectedFile.toPath())) {
+                CryptoUtil.encryptStream(fin, out, config.password);
             }
+
+            SwingUtilities.invokeLater(() -> {
+                progressBar.setIndeterminate(false);
+                progressBar.setString("Idle");
+                progressBar.setValue(progressBar.getMaximum());
+            });
 
             log("File sent: " + selectedFile.getName());
             System.out.println("File sent: " + selectedFile.getName() + " to " + socket.getInetAddress());
